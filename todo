@@ -1,2 +1,4 @@
-create a client
-create a server
+create a server, search for zig sockets
+
+Make a WS chat server
+Some sort of server. WebSocket Chat Client (join, send_message, leave, bunch of rooms)
