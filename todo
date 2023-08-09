@@ -1,4 +1,4 @@
-create a server, search for zig sockets
+fix error olf thread panic. Should propably open port 9000
 
 Make a WS chat server
 Some sort of server. WebSocket Chat Client (join, send_message, leave, bunch of rooms)
