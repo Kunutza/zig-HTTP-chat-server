@@ -9,7 +9,20 @@ const ServeFileError = error{ RecvHeaderEOF, RecvHeaderExceededBuffer, HeaderDid
 
 fn serveFile(stream: *const net.Stream, dir: fs.Dir) !void {
     // Receiving
-    var recv_buf: []u8 = undefined;
+    const file_size: u64 = (try dir.stat()).size;
+    std.log.info("size of dir: {d}", .{file_size});
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer {
+        const deinit_status = gpa.deinit();
+        //fail test; can't try in defer as defer is executed after we return
+        if (deinit_status == .leak) @panic("GPA leaked");
+    }
+
+    const recv_buf = try allocator.alloc(u8, file_size);
+    defer allocator.free(recv_buf);
+    // var recv_buf: [file_size]u8 = undefined;
     var recv_total: usize = 0;
 
     while (stream.read(recv_buf[recv_total..])) |recv_len| {
@@ -120,7 +133,6 @@ pub fn main() !void {
     try (&listener).listen(self_addr);
 
     std.log.info("Listening on {}; press Ctrl-C to exit...", .{self_addr});
-
     while ((&listener).accept()) |conn| {
         std.log.info("Accepted Connection from: {}", .{conn.address});
 
