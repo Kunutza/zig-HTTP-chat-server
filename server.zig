@@ -94,7 +94,7 @@ fn serveFile(stream: *const net.Stream, dir: fs.Dir) !void {
         "Content-Type: {s}\r\n" ++
         "Content-Length: {}\r\n" ++
         "\r\n";
-    const mimes = .{ .{ ".html", "text/html" }, .{ ".css", "text/css" }, .{ ".map", "application/json" }, .{ ".svg", "image/svg+xml" }, .{ ".jpg", "image/jpg" }, .{ ".png", "image/png" } };
+    const mimes = .{ .{ ".html", "text/html" }, .{ ".css", "text/css" }, .{ ".js", "text/javascript" }, .{ ".map", "application/json" }, .{ ".svg", "image/svg+xml" }, .{ ".jpg", "image/jpg" }, .{ ".png", "image/png" } };
     var mime: []const u8 = "text/plain";
 
     inline for (mimes) |kv| {
@@ -102,6 +102,7 @@ fn serveFile(stream: *const net.Stream, dir: fs.Dir) !void {
             mime = kv[1];
     }
 
+    // responce header
     std.log.info(" >>>\n" ++ http_head, .{ mime, file_len });
     try stream.writer().print(http_head, .{ mime, file_len });
 
