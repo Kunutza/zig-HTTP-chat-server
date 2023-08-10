@@ -7,6 +7,11 @@
         <link href="./resources/css/styles.css" type="text/css" rel="stylesheet">
 	</head>
 	<body>
-		<script src="./resources/js/index.js"></script>
+        <form action="/url" method="GET">
+            <label for="text"> Please enter your username:</label>
+            <input type="text" id="text" name="text" minlength="1" maxlength="20" required title="Please enter your name" autocomplete="off">
+            <button type="submit" title="" id="sub_text_btn">Submit</button>  
+        </form>
+        <script src="./resources/js/index.js"></script>
 	</body>
 </html>
