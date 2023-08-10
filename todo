@@ -1,5 +1,9 @@
-add a basic index.html
+add a basic index.html that will have place to right and send what you wrote
+will need to do post
 Make it so that client can only access certain files
+
+add username
+add some rooms (join room, send_message, leave room)
 
 Make a WS chat server
 Some sort of server. WebSocket Chat Client (join, send_message, leave, bunch of rooms)
