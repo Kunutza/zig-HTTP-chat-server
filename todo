@@ -1,4 +1,6 @@
 will need to do post
+  seperate serveFile() into sections for get and post
+
 add place where the posted will appear
 
 Make it so that client can only access certain files
