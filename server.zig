@@ -7,52 +7,11 @@ const io = std.io;
 
 const ServeFileError = error{ RecvHeaderEOF, RecvHeaderExceededBuffer, HeaderDidNotMatch };
 
-fn serveFile(stream: *const net.Stream, dir: fs.Dir) !void {
-    // Receiving
-    const file_size: u64 = (try dir.stat()).size;
-    std.log.info("size of dir: {d}", .{file_size});
-
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    defer {
-        const deinit_status = gpa.deinit();
-        //fail test; can't try in defer as defer is executed after we return
-        if (deinit_status == .leak) @panic("GPA leaked");
-    }
-
-    const recv_buf = try allocator.alloc(u8, file_size);
-    defer allocator.free(recv_buf);
-    // var recv_buf: [file_size]u8 = undefined;
-    var recv_total: usize = 0;
-
-    while (stream.read(recv_buf[recv_total..])) |recv_len| {
-        if (recv_len == 0) {
-            return ServeFileError.RecvHeaderEOF;
-        }
-
-        recv_total += recv_len;
-
-        if (mem.containsAtLeast(u8, recv_buf[0..recv_total], 1, "\r\n\r\n")) {
-            break;
-        }
-
-        if (recv_total >= recv_len) {
-            return ServeFileError.RecvHeaderExceededBuffer;
-        }
-    } else |err| {
-        return err;
-    }
-
-    const recv_slice = recv_buf[0..recv_total];
-    std.log.info("<<<\n{s}", .{recv_slice});
-
+fn serveFileGet(stream: *const net.Stream, dir: fs.Dir, recv_slice: []const u8) !void {
     // Routing
-    var file_path: []const u8 = undefined;
     var tok_itr = mem.tokenize(u8, recv_slice, " ");
-
-    if (!mem.eql(u8, tok_itr.next() orelse "", "GET")) {
-        return ServeFileError.HeaderDidNotMatch;
-    }
+    _ = tok_itr.next();
+    var file_path: []const u8 = undefined;
 
     const path = tok_itr.next() orelse "";
     if (path[0] != '/') {
@@ -102,7 +61,7 @@ fn serveFile(stream: *const net.Stream, dir: fs.Dir) !void {
             mime = kv[1];
     }
 
-    // responce header
+    // response header
     std.log.info(" >>>\n" ++ http_head, .{ mime, file_len });
     try stream.writer().print(http_head, .{ mime, file_len });
 
@@ -117,6 +76,69 @@ fn serveFile(stream: *const net.Stream, dir: fs.Dir) !void {
 
         send_total += send_len;
     }
+}
+
+//fn serveFilePut(stream: *const net.Stream, dir: fs.Dir, tok_itr: mem.TokenIterator) !void {}
+
+fn serveFile(stream: *const net.Stream, dir: fs.Dir) !void {
+    // Receiving
+    const file_size: u64 = (try dir.stat()).size;
+    std.log.info("size of dir: {d}", .{file_size});
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer {
+        const deinit_status = gpa.deinit();
+        //fail test; can't try in defer as defer is executed after we return
+        if (deinit_status == .leak) @panic("GPA leaked");
+    }
+
+    const recv_buf = try allocator.alloc(u8, file_size);
+    defer allocator.free(recv_buf);
+    var recv_total: usize = 0;
+
+    while (stream.read(recv_buf[recv_total..])) |recv_len| {
+        if (recv_len == 0) {
+            return ServeFileError.RecvHeaderEOF;
+        }
+
+        recv_total += recv_len;
+
+        if (mem.containsAtLeast(u8, recv_buf[0..recv_total], 1, "\r\n\r\n")) {
+            break;
+        }
+
+        if (recv_total >= recv_len) {
+            return ServeFileError.RecvHeaderExceededBuffer;
+        }
+    } else |err| {
+        return err;
+    }
+
+    const recv_slice = recv_buf[0..recv_total];
+    std.log.info("<<<\n{s}", .{recv_slice});
+
+    // Routing
+    var tok_itr = mem.tokenize(u8, recv_slice, " ");
+    if (!mem.eql(u8, tok_itr.next() orelse "", "GET")) {
+        tok_itr.reset();
+        if (!mem.eql(u8, tok_itr.next() orelse "", "POST")) {
+            return ServeFileError.HeaderDidNotMatch;
+        }
+    }
+    tok_itr.reset();
+
+    if (mem.eql(u8, tok_itr.next().?, "GET")) {
+        serveFileGet(stream, dir, recv_slice) catch |err| {
+            if (@errorReturnTrace()) |bt| {
+                std.log.err("Failed to serve client: {}: {}", .{ err, bt });
+            } else {
+                std.log.err("Failed to serve client: {}", .{err});
+            }
+        };
+    }
+    tok_itr.reset();
+    if (mem.eql(u8, tok_itr.next().?, "POST")) {}
 }
 
 pub fn main() !void {
