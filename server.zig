@@ -78,7 +78,84 @@ fn serveFileGet(stream: *const net.Stream, dir: fs.Dir, recv_slice: []const u8) 
     }
 }
 
-//fn serveFilePut(stream: *const net.Stream, dir: fs.Dir, tok_itr: mem.TokenIterator) !void {}
+// I want to check content length and content size
+// In the end just give a 200 response
+// also want page to load when post fails
+// also want to just update the contents of the li that holds the text, not the whole page
+// (maybe do this) that could happen by POSTing html in the page after the server checks it and returns HTTP/1.1 201 Created Content-Location: /new.html
+
+fn serveFilePost(stream: *const net.Stream, dir: fs.Dir, recv_slice: []const u8) !void {
+    // Routing
+    var tok_itr = mem.tokenize(u8, recv_slice, " ");
+    _ = tok_itr.next();
+    var file_path: []const u8 = undefined;
+
+    // WHAT DOES THE PATH NEED TO BE FOR A POST -------
+    const path = tok_itr.next() orelse "";
+    if (path[0] != '/') {
+        return ServeFileError.HeaderDidNotMatch;
+    }
+
+    if (mem.eql(u8, path, "/")) {
+        file_path = "index";
+    } else {
+        file_path = path[1..];
+    }
+
+    if (!mem.startsWith(u8, tok_itr.rest(), "HTTP/1.1\r\n")) {
+        return ServeFileError.HeaderDidNotMatch;
+    }
+
+    var file_ext = fs.path.extension(file_path);
+    var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
+
+    if (file_ext.len == 0) {
+        var path_fbs = io.fixedBufferStream(&path_buf);
+
+        try path_fbs.writer().print("{s}.html", .{file_path});
+        file_ext = ".html";
+        file_path = path_fbs.getWritten();
+    }
+
+    std.log.info("Opening {s}", .{file_path});
+
+    var body_file = try dir.openFile(file_path, .{});
+    defer body_file.close();
+
+    const file_len = try body_file.getEndPos();
+    // ------------------------------------------------
+
+    // Sending
+    const http_head =
+        "HTTP/1.1 200 OK\r\n" ++
+        "Connection: close\r\n" ++
+        "Content-Type: {s}\r\n" ++
+        "Content-Length: {}\r\n" ++
+        "\r\n";
+    const mimes = .{ .{ ".html", "text/html" }, .{ ".css", "text/css" }, .{ ".js", "text/javascript" }, .{ ".map", "application/json" }, .{ ".svg", "image/svg+xml" }, .{ ".jpg", "image/jpg" }, .{ ".png", "image/png" } };
+    var mime: []const u8 = "text/plain";
+
+    inline for (mimes) |kv| {
+        if (mem.eql(u8, file_ext, kv[0]))
+            mime = kv[1];
+    }
+
+    // response header
+    std.log.info(" >>>\n" ++ http_head, .{ mime, file_len });
+    try stream.writer().print(http_head, .{ mime, file_len });
+
+    const zero_iovec = &[0]std.os.iovec_const{};
+    var send_total: usize = 0;
+
+    while (true) {
+        const send_len = try std.os.sendfile(stream.handle, body_file.handle, send_total, file_len, zero_iovec, zero_iovec, 0);
+
+        if (send_len == 0)
+            break;
+
+        send_total += send_len;
+    }
+}
 
 fn serveFile(stream: *const net.Stream, dir: fs.Dir) !void {
     // Receiving
@@ -120,15 +197,14 @@ fn serveFile(stream: *const net.Stream, dir: fs.Dir) !void {
 
     // Routing
     var tok_itr = mem.tokenize(u8, recv_slice, " ");
-    if (!mem.eql(u8, tok_itr.next() orelse "", "GET")) {
-        tok_itr.reset();
-        if (!mem.eql(u8, tok_itr.next() orelse "", "POST")) {
+    // I do .startsWith() with .rest() because .eql with .seek().? does not work
+    if (!mem.startsWith(u8, tok_itr.rest(), "GET")) {
+        if (!mem.startsWith(u8, tok_itr.rest(), "POST")) {
             return ServeFileError.HeaderDidNotMatch;
         }
     }
-    tok_itr.reset();
 
-    if (mem.eql(u8, tok_itr.next().?, "GET")) {
+    if (mem.startsWith(u8, tok_itr.rest(), "GET")) {
         serveFileGet(stream, dir, recv_slice) catch |err| {
             if (@errorReturnTrace()) |bt| {
                 std.log.err("Failed to serve client: {}: {}", .{ err, bt });
@@ -137,8 +213,15 @@ fn serveFile(stream: *const net.Stream, dir: fs.Dir) !void {
             }
         };
     }
-    tok_itr.reset();
-    if (mem.eql(u8, tok_itr.next().?, "POST")) {}
+    if (mem.startsWith(u8, tok_itr.rest(), "POST")) {
+        serveFilePost(stream, dir, recv_slice) catch |err| {
+            if (@errorReturnTrace()) |bt| {
+                std.log.err("Failed to serve client: {}: {}", .{ err, bt });
+            } else {
+                std.log.err("Failed to serve client: {}", .{err});
+            }
+        };
+    }
 }
 
 pub fn main() !void {
