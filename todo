@@ -1,5 +1,9 @@
+do the routing part of the serveFilePost 
+
 will need to do post
   seperate serveFile() into sections for get and post
+
+in serveFile change how the file_size is calculated
 
 add place where the posted will appear
 
